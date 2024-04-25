@@ -23,6 +23,10 @@
   v1.0 - релиз(14.12.2021)
 */
 
+#ifndef CLK_DELAY
+#define CLK_DELAY 100
+#endif
+
 #define _LEFT 0
 #define _RIGHT 1
 #define _MIDDLE 2
@@ -122,12 +126,8 @@ class EndTM1637 {
 
     void setBytes(byte byte1, byte byte2, byte byte3, byte byte4) {
       byte hihg[4] = {byte1, byte2, byte3, byte4};
-      for (byte i = 0; i < 4; i++) {
-        if (hihg[i] == _last) hihg[i] = _lastbytes[i];
-      }
-      for (byte i = 0; i < 4; i++) {
-        _lastbytes[i] = hihg[i];
-      }
+      for (byte i = 0; i < 4; i++) if (hihg[i] == _last) hihg[i] = _lastbytes[i];
+      for (byte i = 0; i < 4; i++) _lastbytes[i] = hihg[i];
       setSegments(hihg, 4, 0);
     }
 
@@ -136,71 +136,31 @@ class EndTM1637 {
     }
 
     void dots(int numpoint, bool stat = 1) {
-      if (numpoint != -1) {
-        bitWrite(_lastbytes[numpoint], 7, stat);
-      } else {
-        for (byte i = 0; i < 4; i++) {
-          _lastbytes[i] &= ~bit(7);
-        }
-      }
+      if (numpoint != -1) bitWrite(_lastbytes[numpoint], 7, stat);
+      else for (byte i = 0; i < 4; i++) _lastbytes[i] &= ~bit(7);
       setBytes(_lastbytes[0], _lastbytes[1], _lastbytes[2], _lastbytes[3]);
     }
 
-    void displayInts(int numberhi, bool nulles = 0, byte dotes = -1) {
-      showNumberBaseEx(numberhi < 0 ? -10 : 10, numberhi < 0 ? -numberhi : numberhi, dotes, nulles, 4, 0);
-    }
-
-    void autoFloat(float data) {
-      if (data < 1.000 && data > -1.000) _nul = 1;
-      else _nul = 0;
-      uint8_t base = 0;
-      if (data > 0 and floor(fabs(data)) < 10) {              // Если число без минуса и целая часть меньше 10 - можно вывести 3 дробных знака
-        base = 3;
-      } else if (floor(fabs(data)) < (data > 0 ? 100 : 10)) { // Если есть минус или же целая часть в пределах 9 / 99 - выводим 2 знака
-        base = 2;
-      } else {                                                // Иначе выводим с 1 знаком, вылезания за пределы задетектит сама функция вывода float
-        base = 1;
-      }
-      if (base == 1) {
-        displayInts(data * 10, 0, 2);
-      }
-      if (base == 2) {
-        displayInts(data * 100, 0, 1);
-      }
-      if (base == 3) {
-        displayInts(data * 1000, 0, 0);
-      }
+    void displayInts(int numberhi, bool nulles = 0) {
+      _nul = 0;
+      showNumberBaseEx(numberhi < 0 ? -10 : 10, numberhi < 0 ? -numberhi : numberhi, -1, nulles, 4, 0);
     }
 
     void manualFloat(float num, byte droby = 1, bool nulls = 0) {
       if (num < 1.000 && num > -1.000) _nul = 1;
       else _nul = 0;
-      if (droby == 1) {
-        displayInts(num * 10, nulls, 2);
-      }
-      if (droby == 2) {
-        displayInts(num * 100, nulls, 1);
-      }
-      if (droby == 3) {
-        displayInts(num * 1000, nulls, 0);
-      }
+      if (droby == 1) showNumberBaseEx(num * 10 < 0 ? -10 : 10, num * 10 < 0 ? -num * 10 : num * 10, 2, nulls, 4, 0);
+      else if (droby == 2) showNumberBaseEx(num * 100 < 0 ? -10 : 10, num * 100 < 0 ? -num * 100 : num * 100, 1, nulls, 4, 0);
+      else if (droby == 3) showNumberBaseEx(num * 1000 < 0 ? -10 : 10, num * 1000 < 0 ? -num * 1000 : num * 1000, 0, nulls, 4, 0);
     }
 
     void runningString(uint8_t *str, uint8_t size, uint16_t ms) {
       uint8_t strBuf[size + 8];                  // Временный буфер для всей строки
       uint8_t strPtr = 0;
       uint32_t strTimer = millis();
-
-      for (uint8_t i = 0; i < 4; i++) {               // Добавляем пустые символы в начало строки
-        strBuf[i] = _empty;
-      }
-      for (uint8_t i = 0; i < size; i++) {            // Добавляем символы самой строки
-        strBuf[i + 4] = str[i];
-      }
-      for (uint8_t i = size + 4; i < size + 8; i++) { // Добавляем пустые символы в конец
-        strBuf[i] = _empty;
-      }
-
+      for (uint8_t i = 0; i < 4; i++) strBuf[i] = _empty;
+      for (uint8_t i = 0; i < size; i++) strBuf[i + 4] = str[i];
+      for (uint8_t i = size + 4; i < size + 8; i++) strBuf[i] = _empty;
       while (strPtr < size + 4) {
         if (millis() - strTimer >= ms) {
           strTimer = millis();
@@ -245,41 +205,35 @@ class EndTM1637 {
         base = -base;
         negative = true;
       }
-
+      bool del_zero = leading_zero;
+      leading_zero = _nul ? 1 : del_zero;
       uint8_t digits[4];
       if (num == 0 && !leading_zero) {
-        for (uint8_t i = 0; i < (length - 1); i++)
-          digits[i] = 0;
+        for (uint8_t i = 0; i < (length - 1); i++) digits[i] = 0;
         digits[length - 1] = encodeDigit(0);
-      }
-      else {
+      } else {
         for (int i = length - 1; i >= 0; --i) {
           uint8_t digit = num % base;
-          if (digit == 0 && num == 0 && leading_zero == false)
-            digits[i] = 0;
-          else
-            digits[i] = encodeDigit(digit);
-          if (digit == 0 && num == 0 && negative) {
+          if (digit == 0 && num == 0 && leading_zero == false) digits[i] = 0;
+          else digits[i] = encodeDigit(digit);
+          if (digit == 0 && num == 0 && negative && !_nul) {
             digits[i] = 0b01000000;
             negative = false;
           }
-
           num /= base;
         }
       }
-
-      for (byte i = 0; i < 4; i++) {
-        _lastbytes[i] = digits[i];
+      for (byte i = 0; i < 4; i++) _lastbytes[i] = digits[i];
+      if (_nul) {
+        if (!del_zero) for (int8_t i = dos - 1; i >= 0; i--) _lastbytes[i] = _empty;
+        if (negative) _lastbytes[constrain(dos - 1, 0, 3)] = _defis;
       }
-      if (_nul == 1) {
-        _nul = 0;
-        _lastbytes[2] = _0;
-      }
+      _nul = 0;
       dots(dos);
     }
 
     void bitDelay() {
-      delayMicroseconds(75);
+      delayMicroseconds(CLK_DELAY);
     }
 
     void start() {
@@ -298,51 +252,31 @@ class EndTM1637 {
 
     bool writeByte(uint8_t b) {
       uint8_t data = b;
-
-      // 8 Data Bits
       for (uint8_t i = 0; i < 8; i++) {
-        // CLK low
         fastMode(_ClK, OUTPUT);
         bitDelay();
-
-        // Set data bit
-        if (data & 0x01)
-          fastMode(_DiO, INPUT);
-        else
-          fastMode(_DiO, OUTPUT);
-
+        if (data & 0x01)fastMode(_DiO, INPUT);
+        else fastMode(_DiO, OUTPUT);
         bitDelay();
-
-        // CLK high
         fastMode(_ClK, INPUT);
         bitDelay();
         data = data >> 1;
       }
-
-      // Wait for acknowledge
-      // CLK to zero
       fastMode(_ClK, OUTPUT);
       fastMode(_DiO, INPUT);
       bitDelay();
-
-      // CLK to high
       fastMode(_ClK, INPUT);
       bitDelay();
       uint8_t ack = fastRead(_DiO);
-      if (ack == 0)
-        fastMode(_DiO, OUTPUT);
-
-
+      if (ack == 0) fastMode(_DiO, OUTPUT);
       bitDelay();
       fastMode(_ClK, OUTPUT);
       bitDelay();
-
       return ack;
     }
 
     void showDots(uint8_t dos, uint8_t* digits) {
-      for (int i = 0; i < 4; ++i)
-      {
+      for (int i = 0; i < 4; ++i) {
         digits[i] |= (dos & 0x80);
         dos <<= 1;
       }
@@ -353,22 +287,13 @@ class EndTM1637 {
     }
 
     void setSegments(const uint8_t segments[], uint8_t length, uint8_t pos) {
-      // Write COMM1
       start();
       writeByte(0x40);
       stop();
-
-      // Write COMM2 + first digit address
       start();
       writeByte(0xC0 + (pos & 0x03));
-
-      // Write the data bytes
-      for (uint8_t k = 0; k < length; k++)
-        writeByte(segments[k]);
-
+      for (uint8_t k = 0; k < length; k++) writeByte(segments[k]);
       stop();
-
-      // Write COMM3 + brightness
       start();
       writeByte(0x80 + (m_brightness & 0x0f));
       stop();
